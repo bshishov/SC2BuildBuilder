@@ -11,24 +11,14 @@ namespace SC2BB2
         public static Dictionary<string, BaseEntity> Entities = new Dictionary<string, BaseEntity>();
         public static Dictionary<int, Target> Targets = new Dictionary<int, Target>();
         public static SQLiteDriver Driver;
-        public static int Id = 0;
-
-        public static void AddTarget(int time, string etype, int count)
-        {
-            Targets.Add(time, new Target(etype, count));
-        }
-
-        public static void AddLimit(string etype, int limit)
-        {
-            Entities[etype].MaxUnits = limit;
-        }
+        public static int SnapshotId = 0;
 
         public static void Terrans()
         {
             var cc = BuildBuilder.Entities["CommandCenter"];
             var scv = BuildBuilder.Entities["SCV"];        
 
-            var s = new Snapshot(BuildBuilder.Id++);
+            var s = new Snapshot(BuildBuilder.SnapshotId++);
             s.Minerals = 50;
             s.Supply = -11 + 6;
             s.Vespen = 0;
@@ -48,13 +38,12 @@ namespace SC2BB2
             s.Save();        
         }
 
-        public static void Run()
+        public static void Init(string dbName)
         {
-            string fileName = "test.db";
-            if (File.Exists(fileName))
-                File.Delete(fileName);
+            if (File.Exists(dbName))
+                File.Delete(dbName);
 
-            Driver = new SQLiteDriver(fileName);
+            Driver = new SQLiteDriver(dbName);
 
             string initQuery = @"
                 CREATE TABLE IF NOT EXISTS Snapshots   ( 	
@@ -77,24 +66,28 @@ namespace SC2BB2
 	                process                 INTEGER
                 );
 
-                --CREATE INDEX S1 ON Snapshots ( active );
-                --CREATE INDEX E1 ON Entities ( snapshot_id );
+                CREATE INDEX S1 ON Snapshots ( active );
+                CREATE INDEX E1 ON Entities ( snapshot_id );
 
                 PRAGMA synchronous = OFF;
                 PRAGMA journal_mode = MEMORY;
                 PRAGMA temp_store = MEMORY;
                 --PRAGMA foreign_keys = ON;
-            ";            
+            ";
             Driver.Query(initQuery);
+        }
 
-            Terrans();
-
+        public static void Run()
+        {        
+            // Calculate max time as max target time
             int maxTime = 0;
             foreach(var t in Targets.Keys)
                 if (t > maxTime) maxTime = t;
 
+            // Simulate game
             for (int time = 0; time <= maxTime; time++)
             {
+                // Get last active snapshots
                 var reader = Driver.Query(String.Format("SELECT * FROM Snapshots WHERE time_created = {0}", time));
                 var snapshots = new List<Snapshot>();
                 while (reader.Read())
@@ -109,10 +102,14 @@ namespace SC2BB2
                     snapshots.Add(s);                   
                 }
                 reader.Close();
-                                
+                               
+                // Simulate each snapshot
                 Parallel.ForEach(snapshots, s =>
                 {
                     s.Step(time);
+
+                    // If snapshot dies the delete all relative to it
+                    // DELETE CASCADE don't work for some reason :(
                     if (!s.Active)
                     {
                         Driver.Query(String.Format("DELETE FROM Snapshots WHERE id = {0};", s.Id));
@@ -120,17 +117,6 @@ namespace SC2BB2
                     }
                 });
 
-                /*
-                foreach (var s in snapshots)
-                {
-                    s.Step(time);
-                    if (!s.Active)
-                    {
-                        Driver.Query(String.Format("DELETE FROM Snapshots WHERE id = {0};", s.Id));
-                        Driver.Query(String.Format("DELETE FROM Entities WHERE snapshot_id = {0};", s.Id));
-                    }
-
-                }*/
                 Console.WriteLine(time + " : " + snapshots.Count);
             }           
 

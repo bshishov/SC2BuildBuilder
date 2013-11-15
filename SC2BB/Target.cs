@@ -7,12 +7,12 @@ namespace SC2BB2
 {
     struct Target
     {
-        public string EType;
+        public string Name;
         public int Count;
 
         public Target(string t, int count)
         {
-            EType = t;
+            Name = t;
             Count = count;
         }
     }

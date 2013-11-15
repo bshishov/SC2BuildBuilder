@@ -15,26 +15,27 @@ namespace SC2BB2
 
                 string type = vals[0];
                 BaseEntity e = new BaseEntity();
-                e.EType = type;
+                e.Name = type;
                 e.MineralsCost = Convert.ToInt32(vals[1]);
                 e.VespenCost = Convert.ToInt32(vals[2]);
-                e.Supply = Convert.ToInt32(vals[3]);
+                e.SupplyCost = Convert.ToInt32(vals[3]);
                 e.ProduceTime = Convert.ToInt32(vals[4]);
                 e.MaxEnergy = Convert.ToInt32(vals[7]);
 
                 var requireStr = vals[5];
                 string[] requires = requireStr.Split('/');
 
-                foreach (var req in requires)                
-                    e.Requires(req);                
+                foreach (var req in requires)
+                    e.Requires(req);
 
                 var health = Convert.ToInt32(vals[6]);                
-                var armor = Convert.ToInt32(vals[7]);
-                BuildBuilder.Entities.Add(e.EType, e);
+                BuildBuilder.Entities.Add(e.Name, e);
             }
             
             BuildBuilder.Targets.Add(540, new Target("CommandCenter", 20));
-            BuildBuilder.Run();            
+            BuildBuilder.Init("test.db3");
+            BuildBuilder.Terrans();
+            BuildBuilder.Run();
         }
     }
 }

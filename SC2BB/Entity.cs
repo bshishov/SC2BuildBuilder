@@ -1,34 +1,31 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections.Generic;
 
 namespace SC2BB2
 {   
     enum EnityState
     {
-        Building,
-        Idle,
-        Producing,
+        Building, // Entity is not ready yet
+        Idle, // Doing nothing
+        Producing, // Entity producing another entity
     }
 
+    // Describes base parameters from csv file
     class BaseEntity
     {
-        public string EType = "";
+        public string Name = "";
         public int MineralsCost;
         public int VespenCost;
         public int EnergyCost;
-        public int Supply;
+        public int SupplyCost;
         public int ProduceTime;
         public int MaxEnergy;
-        public int MaxUnits;
+        public int Limit;
         public List<string> Require = new List<string>();        
         public List<string> CanProduce = new List<string>();
 
         public void Produces(string t) { CanProduce.Add(t); }
         public void Requires(string t) { Require.Add(t); }
-        public override string ToString(){return EType.ToString();}
+        public override string ToString(){return Name.ToString();}
     }
 
     class Entity
@@ -65,7 +62,7 @@ namespace SC2BB2
 
         public override string ToString()
         {
-            return TimeCreated.ToString() + ":" + Base.EType.ToString();
+            return TimeCreated.ToString() + ":" + Base.Name.ToString();
         }
     }
 }

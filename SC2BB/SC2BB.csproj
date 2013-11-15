@@ -47,8 +47,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Behaviour.cs" />
     <Compile Include="BuildBuilder.cs" />
     <Compile Include="Entity.cs" />
+    <Compile Include="Path.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SQLliteDriver.cs" />

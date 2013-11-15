@@ -4,19 +4,10 @@ using System;
 using System.Globalization;
 
 namespace SC2BB2
-{
-    class Path
-    {
-        public BaseEntity Ent;
-        public bool Completed;
-
-        public Path(BaseEntity e)
-        {
-            Completed = false;
-            Ent = e;
-        }
-    }
-
+{ 
+    /// <summary>
+    /// Current game state
+    /// </summary>
     class Snapshot
     {
         public int Id;
@@ -29,12 +20,18 @@ namespace SC2BB2
         public List<Entity> Entities = new List<Entity>();
         public List<Path> Paths = new List<Path>();
 
+        /// <summary>
+        /// Root snapshot cinstructor
+        /// </summary>        
         public Snapshot(int id)
         {
             Id = id;
             Active = true;
         }
 
+        /// <summary>
+        /// Constructor for child snapshot
+        /// </summary>        
         public Snapshot(Snapshot parent, int id)
         {
             Active = true;
@@ -48,6 +45,10 @@ namespace SC2BB2
             Supply = parent.Supply;
         }
 
+        /// <summary>
+        /// Selects database rows relative to this snapshot
+        /// and parses it to Entities
+        /// </summary>
         public void FetchEntities()
         {
             var reader = BuildBuilder.Driver.Query(string.Format("Select * FROM Entities WHERE snapshot_id = {0};", Id));
@@ -63,9 +64,12 @@ namespace SC2BB2
             }
         }
 
+        /// <summary>
+        /// Save current state and its entities to database
+        /// </summary>
         public void Save()
-        {
-            //BuildBuilder.Driver.Query("BEGIN TRANSACTION IMMEDIATE;");
+        {   
+            // Save snapshot data
             string insertSnapshot = String.Format(@"
             INSERT INTO Snapshots 
             (id, time_created, minerals, vespen, supply, active) VALUES
@@ -73,35 +77,40 @@ namespace SC2BB2
             , Id, Time, Minerals.ToString(CultureInfo.InvariantCulture), Vespen.ToString(CultureInfo.InvariantCulture), Supply, Active);
             BuildBuilder.Driver.NonExecuteQuery(insertSnapshot);
 
+            // Save snapshot entities
             foreach (var e in Entities)
             {
                 string insertEntity = String.Format(@"
                 INSERT INTO Entities 
                 (snapshot_id, entity_id, time, base, production_entity_id, attached_to, state, process) VALUES
                 ({0}, {1}, {2}, '{3}', {4}, {5}, {6}, {7})
-            ", Id, e.Id, e.TimeCreated, e.Base.EType, e.ProductionEntityId, e.AttachedToId, (int)e.State, e.Process);
+            ", Id, e.Id, e.TimeCreated, e.Base.Name, e.ProductionEntityId, e.AttachedToId, (int)e.State, e.Process);
                 BuildBuilder.Driver.NonExecuteQuery(insertEntity);
-            }
-
-            //BuildBuilder.Driver.Query("COMMIT TRANSACTION;");
+            }            
         }       
 
+        /// <summary>
+        /// "Can we build this entity?"
+        /// </summary>        
         bool IsAvailable(BaseEntity ent)
         {
-            // Если больше чем нужно то не предлагать
-            if (Entities.FindAll(o => o.Base.EType == ent.EType).Count() >= ent.MaxUnits) 
+            // Chech limit
+            if (Entities.FindAll(o => o.Base.Name == ent.Name).Count() >= ent.Limit) 
                 return false;
 
             // Pass the requirements or not?
             foreach (var e in ent.Require)
             {
-                if (Entities.Find(c => c.Base.EType == e) == null)
+                if (Entities.Find(c => c.Base.Name == e) == null)
                     return false;
             }
 
             return true;
         }
 
+        /// <summary>
+        /// Check ways of future development
+        /// </summary>
         public void CheckActions()
         {
             foreach (var e in BuildBuilder.Entities.Values)
@@ -111,19 +120,25 @@ namespace SC2BB2
             }
         }
 
+        /// <summary>
+        /// Checks targets reached or not
+        /// </summary>        
         public bool CheckTargets(int time)
         {
             if (BuildBuilder.Targets.ContainsKey(time))
             {
                 var target = BuildBuilder.Targets[time];
 
-                if (Entities.FindAll(e => e.Base.EType == target.EType).Count < target.Count)
+                if (Entities.FindAll(e => e.Base.Name == target.Name).Count < target.Count)
                     return false;
             }
 
             return true;
         }
 
+        /// <summary>
+        /// Returns max entity id
+        /// </summary>        
         public int MaxId()
         {
             int max = -1;
@@ -136,19 +151,19 @@ namespace SC2BB2
         {
             if (Minerals < e.MineralsCost) return false;
             if (Vespen < e.VespenCost) return false;
-            if (Supply + e.Supply > 0) return false;            
+            if (Supply + e.SupplyCost > 0) return false;            
 
-            Snapshot s = new Snapshot(this, BuildBuilder.Id++);            
+            Snapshot s = new Snapshot(this, BuildBuilder.SnapshotId++);            
 
             // Выбрать простаивающие сущности которые могу произвести данный юнит / здание
-            var builders = s.Entities.FindAll(ent => ent.Base.CanProduce.Find(t => t == e.EType) != null && ent.State == EnityState.Idle);
+            var builders = s.Entities.FindAll(ent => ent.Base.CanProduce.Find(t => t == e.Name) != null && ent.State == EnityState.Idle);
 
             // Если строить предложенный юнит некому то выходим
             if (builders.Count == 0) return false;
 
             s.Minerals -= e.MineralsCost;
             s.Vespen -= e.VespenCost;
-            s.Supply += e.Supply;
+            s.Supply += e.SupplyCost;
             s.Time = time;
 
             Entity entity = new Entity(e, s.MaxId() + 1, time);
@@ -163,6 +178,10 @@ namespace SC2BB2
             return true;
         }
 
+        /// <summary>
+        /// Main processing method
+        /// </summary>
+        /// <param name="time"></param>
         public void Step(int time)
         {
             while (Paths.Count > 0)
@@ -171,41 +190,11 @@ namespace SC2BB2
                 {
                     Active = false;
                     return;
-                }
-
-                var workers = Entities.FindAll(w => w.Base.EType == "SCV");
-                var freeworkers = workers.FindAll(w => w.State == EnityState.Idle && w.AttachedToId == -1);
-                var ccList = new List<int>();
-                var refList = new List<int>();
-
-                foreach (var w in freeworkers)
-                    w.AttachedToId = Entities.Find(e => e.Base.EType == "CommandCenter").Id;
+                }               
                 
                 foreach (var e in Entities)
-                {
-                    if (e.Base.EType == "CommandCenter")
-                        ccList.Add(e.Id);
+                    Behaviour.BehaviourProcess(e, this);
 
-                    if (e.Base.EType == "Refinery")
-                        refList.Add(e.Id);
-
-                    if (e.State == EnityState.Producing)
-                    {
-                        var productionEntity = Entities.Find(o => o.Id == e.ProductionEntityId);
-                        productionEntity.Process -= 1;
-
-                        if (productionEntity.Process <= 0)
-                        {
-                            e.State = EnityState.Idle;
-                            e.ProductionEntityId = -1;
-                            productionEntity.State = EnityState.Idle;                            
-                        }  
-                    }
-                }
-
-                Minerals += workers.FindAll(w => ccList.Contains(w.AttachedToId)).Count * 0.64f;
-                Vespen += workers.FindAll(w => refList.Contains(w.AttachedToId)).Count * 1;
-                                
                 foreach (var p in Paths)
                     p.Completed = TryBuild(p.Ent, time);
 
